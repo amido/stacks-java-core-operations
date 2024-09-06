@@ -7,7 +7,7 @@
 # NB: Some resources e.g. blob storage only allow for alpha numeric characters so the name is adjusted accordingly          #
 #  ==> `$company$project$stage$domain`                                                                                      #
 #############################################################################################################################
-name: $(version_major).$(version_minor).$(version_patch).$(Rev:r)-$(build_type)
+name: $(version_major).$(version_minor).$(Rev:r)-$(build_type)
 
 pr:
   - main
@@ -26,24 +26,24 @@ resources:
       type: github
       name: Ensono/stacks-pipeline-templates
       ref: feature/cycle4
-      # EXCHANGE THIS FOR YOUR OWN ENDPOINT CONNECTION   TO GITHUB
+      # EXCHANGE THIS FOR YOUR OWN ENDPOINT CONNECTION TO GITHUB
       # REPOSITORY IS PUBLIC
-      endpoint: amidostacks
+      endpoint: ensonostacks
 
+  # NOTE: To use the branch release containers, prefix with ensonostackseuweirdfmu.azurecr.io/
+  # i.e. ensonostackseuweirdfmu.azurecr.io/ensono/eir-java:1.1.222
   containers:
     # Container for Java Build and Testing
+    # Container for Sonar Scanner
     - container: azul_java
-      image: amidostacks/runner-pwsh-java:0.4.48-stable
+      image: ensono/eir-java:1.1.251
     # Container for inlining Jacoco assets as Azure DevOps strips them
     # https://github.com/microsoft/azure-pipelines-tasks/issues/3027
     - container: node
-      image: amidostacks/node-14:0.0.1
-    # Container for Sonar Scanner
-    - container: sonar_scanner
-      image: amidostacks/runner-pwsh-dotnet:0.4.51-stable
+      image: ensono/eir-nodejs:1.1.251
     # Container for Kubernetes Deployment
     - container: k8s_deploy
-      image: amidostacks/ci-k8s:0.0.12
+      image: ensono/eir-infrastructure:1.1.251
 
 variables:
   - template: azuredevops-vars.yml
@@ -53,8 +53,9 @@ stages:
     variables:
       # You can find notes in the READMEs around which values to use for each ENV variable group
       - group: stacks-credentials-nonprod-kv
-      - group: amido-stacks-java-modules
-      - group: amido-stacks-java-modules-azure-cosmos
+      - group: sonar-credentials
+      - group: stacks-java-modules
+      - group: stacks-java-azure-cosmos
     jobs:
       # Compile, test and deploy to an artifact repository the Java module
       - job: ModuleBuild
@@ -62,6 +63,7 @@ stages:
           vmImage: $(pool_vm_image)
         steps:
           - checkout: self
+            fetchDepth: 0
 
           - checkout: templates
 
@@ -85,6 +87,8 @@ stages:
               maven_allowed_test_tags: "${{ variables.maven_allowed_test_tags}}"
               maven_package_version: "${{ variables.maven_package_version }}"
               maven_settings_file: "${{ variables.maven_settings_file }}"
+              # Tests
+              functional_testing_required: "${{ variables.functional_test }}"
               # OSSRH
               ossrh_jira_id: "$(ossrh-jira-id)"
               ossrh_jira_password: "$(ossrh-jira-password)"
@@ -116,7 +120,7 @@ stages:
               sonar_project_name: "$(SONAR_PROJECT_NAME)"
               sonar_project_key: "$(SONAR_PROJECT_KEY)"
               sonar_token: "$(SONAR_TOKEN)"
-              sonar_organisation: "$(SONAR_ORGANIZATION)"
+              sonar_organisation: "$(SONAR_ORGANISATION)"
               # Probably `GitHub` or `vsts`
               sonar_pullrequest_provider: "GitHub"
               sonar_remote_repo: "${{ variables.self_remote_repo }}"
@@ -147,12 +151,13 @@ stages:
               # Docker
               docker_build_container: "${{ variables.docker_java_image }}"
 
-
       # Build, test and deploy to an artifact repository the archetype based on the Java module
       - job: ArchetypeBuild
         dependsOn: ModuleBuild
         pool:
           vmImage: $(pool_vm_image)
+        variables:
+          - group: release-github-credentials
         steps:
           - checkout: self
 
@@ -186,11 +191,22 @@ stages:
               ossrh_jira_password: "$(ossrh-jira-password)"
               # Docker
               docker_build_container: "${{ variables.docker_java_image }}"
-              # Vulnerability Scanning
-              vulnerability_scan: "${{ variables.vulnerability_scan }}"
-              vulnerability_scan_fail_build_on_detection: "${{ variables.vulnerability_scan_fail_build_on_detection }}"
               project_type: "${{ variables.java_project_type }}"
               build_type: "${{ variables.build_type }}"
-              # private  key id  to sign doc
+              # private key id  to sign doc
               gpg_key_signing_id: "$(gpg-key-signing-id)"
               gpg_private_key: "$(gpg-private-key)"
+
+          - task: PowerShell@2
+            condition: eq(variables['build_type'], 'RELEASE')
+            inputs:
+              targetType: inline
+              script: |
+                Import-Module /modules/EnsonoBuild
+                Publish-GitHubRelease -GenerateReleaseNotes $true -UploadArtifacts $false
+            env:
+              STAGE: "release"
+              PUBLISH_RELEASE: "true"
+            target:
+              container: k8s_deploy
+            displayName: Publish GitHub Release

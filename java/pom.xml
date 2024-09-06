@@ -4,10 +4,25 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
+  <!-- Uncomment the below to reference a com.amido package that's still in SNAPSHOT -->
+  <!-- NOTE: That should be for development only, and should be commented out before merging a PR -->
+  <!-- <repositories>
+    <repository>
+        <id>oss.sonatype.org-snapshot</id>
+        <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
+        <releases>
+          <enabled>false</enabled>
+        </releases>
+        <snapshots>
+          <enabled>true</enabled>
+        </snapshots>
+    </repository>
+  </repositories> -->
+
   <parent>
     <groupId>com.amido.stacks.modules</groupId>
     <artifactId>stacks-modules-parent</artifactId>
-    <version>2.0.7-RELEASE</version>
+    <version>3.0.26-RELEASE</version>
   </parent>
 
   <artifactId>stacks-azure-cosmos</artifactId>
